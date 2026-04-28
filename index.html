@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lista de Precios</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside class="toolbar no-print">
+    <h2>Configuración</h2>
+
+    <label>
+      ID o URL del Google Sheet
+      <input type="text" id="sheetId" placeholder="1AbCdEf... o URL completa" />
+    </label>
+
+    <label>
+      Nombre de la pestaña (opcional)
+      <input type="text" id="sheetName" placeholder="Hoja1" />
+    </label>
+
+    <label>
+      Título del documento
+      <input type="text" id="docTitle" value="Lista de Precios" />
+    </label>
+
+    <label>
+      Subtítulo / Empresa
+      <input type="text" id="docSubtitle" placeholder="Mi Empresa S.A." />
+    </label>
+
+    <label>
+      Símbolo de moneda
+      <input type="text" id="currency" value="$" />
+    </label>
+
+    <div class="actions">
+      <button id="reload">Actualizar datos</button>
+      <button id="print">Imprimir / PDF</button>
+    </div>
+
+    <details class="help">
+      <summary>¿Cómo conectar el Google Sheet?</summary>
+      <ol>
+        <li>Abrí tu Google Sheet.</li>
+        <li>Compartir → "Cualquier persona con el enlace" como <em>Lector</em>.</li>
+        <li>Pegá la URL o el ID arriba.</li>
+        <li>Las primeras 3 columnas deben ser <strong>Producto</strong>, <strong>Código</strong>, <strong>Precio</strong>.</li>
+        <li>Las columnas siguientes son rangos de precio (ej: <em>1-10</em>, <em>11-50</em>, <em>51+</em>). El nombre de cada columna se usa como encabezado.</li>
+      </ol>
+    </details>
+
+    <p class="status" id="status"></p>
+  </aside>
+
+  <main class="sheet" id="sheet">
+    <header class="sheet-header">
+      <div class="brand">
+        <h1 id="title">Lista de Precios</h1>
+        <p id="subtitle"></p>
+      </div>
+      <div class="meta">
+        <p>Fecha: <span id="today"></span></p>
+      </div>
+    </header>
+
+    <section class="table-wrap">
+      <table id="priceTable">
+        <thead>
+          <tr id="headerRow">
+            <th>Producto</th>
+            <th>Código</th>
+            <th class="num">Precio</th>
+          </tr>
+        </thead>
+        <tbody id="bodyRows">
+          <tr><td colspan="3" class="empty">Cargá un Sheet desde el panel lateral.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="sheet-footer">
+      <p id="footerText">Precios sujetos a modificación sin previo aviso.</p>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
