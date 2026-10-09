@@ -1,0 +1,14 @@
+{
+  "name": "sistema-contable-uni-v5",
+  "version": "5.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test tests/engine.test.js",
+    "test:e2e": "node tests/e2e.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}
