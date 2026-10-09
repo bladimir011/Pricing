@@ -1,0 +1,90 @@
+/*
+ * Conector de almacenamiento para Google Apps Script.
+ * La interfaz (js_app) llama a estas funciones; aquí se traducen a google.script.run (Code.gs),
+ * que guarda todo en la hoja de cálculo de Google Sheets.
+ */
+(function () {
+  'use strict';
+  let token = null, rev = 0, hooks = {}, queue = Promise.resolve();
+
+  function call(fn, args) {
+    return new Promise((resolve, reject) => {
+      const runner = google.script.run
+        .withSuccessHandler(r => {
+          if (r && r.error) {
+            if (r.error === 'SESION_VENCIDA') {
+              if (hooks.expired) hooks.expired();
+              return reject(new Error('Tu sesión venció. Vuelve a ingresar.'));
+            }
+            return reject(new Error(r.error));
+          }
+          resolve(r);
+        })
+        .withFailureHandler(e => reject(new Error((e && e.message) || String(e))));
+      runner[fn].apply(runner, args);
+    });
+  }
+
+  const status = s => { if (hooks.status) hooks.status(s); };
+
+  window.AppBackend = {
+    label: 'Google Sheets (base de datos compartida)',
+    features: ['sheets', 'usuarios'],
+    setHooks(h) { hooks = h || {}; },
+
+    async login(usuario, clave) {
+      const r = await call('login', [usuario, clave]);
+      token = r.token;
+      rev = r.rev;
+      return { user: r.user, db: r.db };
+    },
+
+    logout() {
+      if (token) call('logout', [token]).catch(() => {});
+      token = null;
+    },
+
+    /** Guarda en segundo plano y en orden. Si otro usuario cambió los datos, se recargan los más recientes. */
+    save(changes) {
+      status('saving');
+      queue = queue.then(async () => {
+        try {
+          const r = await call('saveChanges', [token, changes, rev]);
+          rev = r.rev;
+          if (r.conflict && hooks.reload) {
+            hooks.reload(r.db, 'Otro usuario modificó la información mientras trabajabas. Se cargaron los datos más recientes; revisa si tu último cambio quedó registrado y, si no, vuelve a hacerlo.');
+          }
+          status('saved');
+        } catch (e) {
+          status('error');
+          if (hooks.error) hooks.error('No se pudo guardar en Google Sheets: ' + e.message);
+          try {
+            const r = await call('getDb', [token]);
+            rev = r.rev;
+            if (hooks.reload) hooks.reload(r.db);
+          } catch (e2) { /* sin conexión: se mantiene lo que hay en pantalla */ }
+        }
+      });
+      return queue;
+    },
+
+    async replace(db) {
+      await queue;
+      const r = await call('replaceDb', [token, db]);
+      rev = r.rev;
+      return r.db;
+    },
+
+    async reset() {
+      await queue;
+      const r = await call('resetDemo', [token]);
+      rev = r.rev;
+      return r.db;
+    },
+
+    /** Otras operaciones del servidor (usuarios, reportes). El token se agrega solo. */
+    api(fn, ...args) {
+      return queue.then(() => call(fn, [token].concat(args)));
+    }
+  };
+})();

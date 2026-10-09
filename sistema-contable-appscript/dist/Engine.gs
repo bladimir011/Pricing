@@ -1,3 +1,4 @@
+/* Motor contable · generado por build.js desde sistema-contable/public/js/engine.js. No editar aquí: editar el original. */
 /*
  * Motor contable y de costos (lógica pura, sin DOM).
  * Todos los asientos se GENERAN a partir de los documentos (compras, requisiciones,

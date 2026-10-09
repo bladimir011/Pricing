@@ -52,9 +52,11 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   await page.goto(url);
   await page.fill('#loginPass', 'malo');
   await page.click('#loginForm button[type=submit]');
+  await page.waitForSelector('#loginError:not(.hidden)');
   check(await page.isVisible('#loginError'), 'contraseña incorrecta muestra error');
   await page.fill('#loginPass', 'uni2026');
   await page.click('#loginForm button[type=submit]');
+  await page.waitForSelector('#app:not(.hidden)');
   check(await page.isVisible('#app'), 'ingresa con admin / uni2026');
 
   console.log('Todos los módulos del menú');
@@ -146,6 +148,7 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   check(await page.isVisible('#loginScreen'), 'al recargar pide login');
   await page.fill('#loginPass', 'uni2026');
   await page.click('#loginForm button[type=submit]');
+  await page.waitForSelector('#app:not(.hidden)');
   check(await page.evaluate(() => window.__app.db.compras.some(c => c.documento === 'F009-00001')), 'los datos persisten en localStorage');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.click('#menuBtn');

@@ -71,6 +71,9 @@ Las pruebas verifican que:
 
 Los datos se guardan en el `localStorage` del navegador con la clave `uni_contable_v5`. Si existían datos de la V4, se conserva una copia en `uni_contable_v4_respaldo`.
 
+## Versión Google Apps Script
+La carpeta `../sistema-contable-appscript` publica este mismo sistema con Google Apps Script y guarda los datos en Google Sheets, con usuarios y perfiles. La interfaz usa un conector de almacenamiento: sin `window.AppBackend` guarda en el navegador (esta versión); con el conector de Apps Script guarda en Google Sheets.
+
 ## Notas
 - Las tasas (RMV, AFP, EsSalud, ONP e IR) son parametrizables. Verifica las vigentes antes de presentar.
 - El impuesto a la renta se calcula de forma simplificada sobre la utilidad contable.

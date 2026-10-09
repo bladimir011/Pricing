@@ -1,11 +1,10 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
+<base target="_top">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#8b1e2d">
 <title>Sistema Contable y de Costos UNI · OMEGA SAC</title>
-<link rel="stylesheet" href="css/styles.css">
+<?!= include('css'); ?>
 </head>
 <body>
 <section class="login" id="loginScreen">
@@ -25,7 +24,7 @@
       <div class="field"><label for="loginUser">Usuario</label><input id="loginUser" autocomplete="username" value="admin" required></div>
       <div class="field"><label for="loginPass">Contraseña</label><input id="loginPass" type="password" autocomplete="current-password" placeholder="Contraseña" required></div>
       <button class="btn btn-primary btn-block" type="submit">Ingresar al sistema</button>
-      <div class="demo-box"><b>Acceso de prueba</b><br>Usuario: <b>admin</b> · Contraseña: <b>uni2026</b><br><span class="muted">Login demostrativo (sin servidor). Al recargar la página se vuelve a pedir.</span></div>
+      <div class="demo-box"><b>Acceso de prueba</b><br>Usuario inicial: <b>admin</b> · Contraseña inicial: <b>uni2026</b><br><span class="muted">Usuarios guardados en Google Sheets. Cambia la contraseña inicial en Utilitarios → Usuarios y accesos.</span></div>
     </form>
   </div>
 </section>
@@ -45,8 +44,8 @@
   </main>
 </div>
 
-<script src="js/engine.js"></script>
-<script src="js/seed.js"></script>
-<script src="js/app.js"></script>
+<?!= include('js_engine'); ?>
+<?!= include('js_backend'); ?>
+<?!= include('js_app'); ?>
 </body>
 </html>

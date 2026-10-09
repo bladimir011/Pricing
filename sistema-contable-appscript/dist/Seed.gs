@@ -1,3 +1,4 @@
+/* Datos de ejemplo · generado por build.js desde sistema-contable/public/js/seed.js. No editar aquí: editar el original. */
 /*
  * Datos de ejemplo (ficticios) de OMEGA SAC, fabricante de muebles, periodo octubre 2026.
  * Todos los nombres, RUC y montos son referenciales para la demostración del curso.
