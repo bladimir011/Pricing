@@ -97,7 +97,9 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   await page.selectOption('#f_otId', '3');
   await page.fill('#f_cantidad', '9999');
   await page.click('[data-crud-save="rq"]');
-  check(dialogs.some(d => d.includes('Stock insuficiente')), 'muestra alerta de stock insuficiente');
+  const msg = await page.textContent('.modal p');
+  check(msg.includes('Stock insuficiente'), 'muestra alerta de stock insuficiente');
+  await page.click('.modal [data-r="1"]');
   check(await page.evaluate(() => window.__app.db.requisiciones.length) === nReq, 'no graba la requisición');
 
   console.log('Requisición válida');
@@ -124,6 +126,7 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   console.log('Cierre del ejercicio');
   await page.click('.nav[data-view="cierre"]');
   await page.click('#doClose');
+  await page.click('.modal [data-r="1"]');
   check((await page.textContent('#periodBadge')).includes('CERRADO'), 'periodo cerrado');
   const closedOk = await page.evaluate(() => {
     const c = window.__app.ctx();
@@ -135,6 +138,7 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   check(!!(await page.$('.toast.err')), 'no permite modificar con el periodo cerrado');
   await page.click('.nav[data-view="cierre"]');
   await page.click('#reopen');
+  await page.click('.modal [data-r="1"]');
   check(!(await page.textContent('#periodBadge')).includes('CERRADO'), 'revierte el cierre');
 
   console.log('Persistencia y vista móvil');
@@ -150,6 +154,7 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   check(overflow <= 1, 'sin scroll horizontal en móvil');
   if (shots) await page.screenshot({ path: path.join(shots, 'mobile.png'), fullPage: false });
 
+  check(dialogs.length === 0, 'no usa alert/confirm nativos');
   check(errors.length === 0, 'sin errores de JavaScript' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await browser.close();
   srv.close();

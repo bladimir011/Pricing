@@ -46,10 +46,28 @@
     if (fn(draft) === false) return false;
     const before = new Set(E.blockingErrors(DB));
     const nuevos = E.blockingErrors(draft).filter(x => !before.has(x));
-    if (nuevos.length) { alert('No se puede grabar:\n\n' + nuevos.join('\n')); return false; }
+    if (nuevos.length) { notify('No se puede grabar:\n\n' + nuevos.join('\n')); return false; }
     DB = draft; persist(DB); REV++;
     return true;
   }
+
+  /** Diálogo propio (sustituye alert/confirm, que algunos visores bloquean). Devuelve una promesa con true/false. */
+  function dialog(msg, withCancel) {
+    return new Promise(resolve => {
+      const back = document.createElement('div');
+      back.className = 'modal-back';
+      back.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><p></p><div class="actions">${withCancel ? '<button class="btn btn-secondary" data-r="0">Cancelar</button>' : ''}<button class="btn btn-primary" data-r="1">${withCancel ? 'Confirmar' : 'Entendido'}</button></div></div>`;
+      $('p', back).textContent = msg;
+      const close = r => { back.remove(); document.removeEventListener('keydown', key); resolve(r); };
+      const key = e => { if (e.key === 'Escape') close(false); };
+      back.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (b) close(b.dataset.r === '1'); });
+      document.addEventListener('keydown', key);
+      document.body.appendChild(back);
+      $('[data-r="1"]', back).focus();
+    });
+  }
+  const notify = msg => { dialog(msg, false); };
+  const ask = msg => dialog(msg, true);
 
   function toast(t, err) {
     const x = document.createElement('div');
@@ -192,7 +210,7 @@
           const id = editing ? editing.id : nextId(arr);
           const rec2 = { ...(editing || {}), ...data, id };
           const msg = cfg.validate ? cfg.validate(rec2, d, editing ? editing.id : null) : '';
-          if (msg) { alert(msg); return false; }
+          if (msg) { notify(msg); return false; }
           if (cfg.beforeSave) cfg.beforeSave(rec2, d);
           if (editing) arr[arr.findIndex(x => Number(x.id) === Number(editing.id))] = rec2;
           else arr.push(rec2);
@@ -201,13 +219,13 @@
       }));
       $$(`[data-crud-cancel="${cfg.key}"]`).forEach(b => (b.onclick = () => { EDIT[cfg.key] = null; rerender(); }));
       $$(`[data-crud-edit="${cfg.key}"]`).forEach(b => (b.onclick = () => { EDIT[cfg.key] = Number(b.dataset.id); rerender(); window.scrollTo(0, 0); }));
-      $$(`[data-crud-del="${cfg.key}"]`).forEach(b => (b.onclick = () => {
+      $$(`[data-crud-del="${cfg.key}"]`).forEach(b => (b.onclick = async () => {
         const id = Number(b.dataset.id);
         if (cfg.usos) {
           const u = E.usos(DB, cfg.usos, id);
-          if (u.length) return alert('No se puede eliminar: el registro se usa en ' + u.join(', ') + '.');
+          if (u.length) return notify('No se puede eliminar: el registro se usa en ' + u.join(', ') + '.');
         }
-        if (!confirm('¿Eliminar el registro seleccionado?')) return;
+        if (!await ask('¿Eliminar el registro seleccionado?')) return;
         if (commit(d => {
           const arr = cfg.coll(d);
           const i = arr.findIndex(x => Number(x.id) === id);
@@ -320,7 +338,7 @@
       <div class="actions"><button class="btn btn-primary" id="cfgSave">Guardar parámetros</button></div></div>`);
     $('#cfgSave').onclick = () => {
       const data = readFields(F);
-      if (!/^\d{4}-\d{2}$/.test(data.periodo)) return alert('Indica un periodo válido.');
+      if (!/^\d{4}-\d{2}$/.test(data.periodo)) return notify('Indica un periodo válido.');
       if (commit(d => { Object.assign(d.empresa, data); })) { toast('Parámetros guardados'); refreshChrome(); rerender(); }
     };
   }
@@ -411,12 +429,12 @@
     $('#cSave').onclick = () => {
       const h = readFields(H);
       const items = readItems(itemsBox, 'compra');
-      if (!h.fecha || !h.documento || !h.proveedor) return alert('Completa fecha, número de comprobante y proveedor.');
-      if (!items.length) return alert('Agrega al menos un ítem.');
+      if (!h.fecha || !h.documento || !h.proveedor) return notify('Completa fecha, número de comprobante y proveedor.');
+      if (!items.length) return notify('Agrega al menos un ítem.');
       for (const it of items) {
-        if (it.tipo === 'MATERIAL' && (!it.materialId || it.cantidad <= 0 || it.costoUnit <= 0)) return alert('Cada material debe tener material, cantidad y valor unitario mayores a cero.');
-        if (it.tipo !== 'MATERIAL' && (!it.descripcion || it.monto <= 0)) return alert('Cada servicio o activo debe tener descripción e importe.');
-        if (it.tipo === 'SERVICIO' && it.destino === 'CIF' && !it.cifId) return alert('Indica el concepto CIF del gasto destinado a CIF (define su inductor).');
+        if (it.tipo === 'MATERIAL' && (!it.materialId || it.cantidad <= 0 || it.costoUnit <= 0)) return notify('Cada material debe tener material, cantidad y valor unitario mayores a cero.');
+        if (it.tipo !== 'MATERIAL' && (!it.descripcion || it.monto <= 0)) return notify('Cada servicio o activo debe tener descripción e importe.');
+        if (it.tipo === 'SERVICIO' && it.destino === 'CIF' && !it.cifId) return notify('Indica el concepto CIF del gasto destinado a CIF (define su inductor).');
         if (it.tipo === 'SERVICIO' && it.destino !== 'CIF') it.cifId = null;
       }
       if (commit(d => {
@@ -427,8 +445,8 @@
     if ($('#cCancel')) $('#cCancel').onclick = () => { COMPRA_EDIT = null; rerender(); };
     $$('[data-edit]').forEach(b => (b.onclick = () => { COMPRA_EDIT = Number(b.dataset.edit); rerender(); window.scrollTo(0, 0); }));
     $$('[data-asientos]').forEach(b => (b.onclick = () => navigate('diario', { q: b.dataset.asientos })));
-    $$('[data-del]').forEach(b => (b.onclick = () => {
-      if (!confirm('¿Eliminar la compra? Se recalcularán kardex y asientos.')) return;
+    $$('[data-del]').forEach(b => (b.onclick = async () => {
+      if (!await ask('¿Eliminar la compra? Se recalcularán kardex y asientos.')) return;
       if (commit(d => { d.compras = d.compras.filter(x => x.id !== Number(b.dataset.del)); })) { toast('Compra eliminada'); rerender(); }
     }));
   }
@@ -488,8 +506,8 @@
     bindDel(); upd();
     $('#vSave').onclick = () => {
       const h = readFields(H), items = readItems(box, 'venta');
-      if (!h.fecha || !h.documento || !h.cliente) return alert('Completa fecha, número de comprobante y cliente.');
-      if (!items.length || items.some(i => !i.productoId || i.cantidad <= 0 || i.precioUnit <= 0)) return alert('Cada ítem debe tener producto, cantidad y valor unitario.');
+      if (!h.fecha || !h.documento || !h.cliente) return notify('Completa fecha, número de comprobante y cliente.');
+      if (!items.length || items.some(i => !i.productoId || i.cantidad <= 0 || i.precioUnit <= 0)) return notify('Cada ítem debe tener producto, cantidad y valor unitario.');
       if (commit(d => {
         if (editing) { const i = d.ventas.findIndex(x => x.id === editing.id); d.ventas[i] = { ...editing, ...h, items }; }
         else d.ventas.push({ id: nextId(d.ventas), ...h, items });
@@ -498,8 +516,8 @@
     if ($('#vCancel')) $('#vCancel').onclick = () => { VENTA_EDIT = null; rerender(); };
     $$('[data-edit]').forEach(b => (b.onclick = () => { VENTA_EDIT = Number(b.dataset.edit); rerender(); window.scrollTo(0, 0); }));
     $$('[data-asientos]').forEach(b => (b.onclick = () => navigate('diario', { q: b.dataset.asientos })));
-    $$('[data-del]').forEach(b => (b.onclick = () => {
-      if (!confirm('¿Eliminar la venta?')) return;
+    $$('[data-del]').forEach(b => (b.onclick = async () => {
+      if (!await ask('¿Eliminar la venta?')) return;
       if (commit(d => { d.ventas = d.ventas.filter(x => x.id !== Number(b.dataset.del)); })) { toast('Venta eliminada'); rerender(); }
     }));
   }
@@ -627,10 +645,10 @@
       const h = readFields(H);
       const lineas = readItems(box, 'asiento').filter(l => l.debe || l.haber);
       const d = E.sumBy(lineas, 'debe'), hb = E.sumBy(lineas, 'haber');
-      if (!h.fecha || !h.glosa) return alert('Indica fecha y glosa.');
-      if (lineas.length < 2) return alert('El asiento necesita al menos dos líneas.');
-      if (lineas.some(l => l.debe && l.haber)) return alert('Cada línea debe ir solo al Debe o solo al Haber.');
-      if (Math.abs(d - hb) > 0.005) return alert(`El asiento no cuadra: Debe ${n2(d)} y Haber ${n2(hb)}.`);
+      if (!h.fecha || !h.glosa) return notify('Indica fecha y glosa.');
+      if (lineas.length < 2) return notify('El asiento necesita al menos dos líneas.');
+      if (lineas.some(l => l.debe && l.haber)) return notify('Cada línea debe ir solo al Debe o solo al Haber.');
+      if (Math.abs(d - hb) > 0.005) return notify(`El asiento no cuadra: Debe ${n2(d)} y Haber ${n2(hb)}.`);
       if (commit(db => {
         if (editing) { const i = db.asientos.findIndex(x => x.id === editing.id); db.asientos[i] = { ...editing, ...h, lineas }; }
         else db.asientos.push({ id: nextId(db.asientos), ...h, lineas });
@@ -638,8 +656,8 @@
     };
     if ($('#aCancel')) $('#aCancel').onclick = () => { AS_EDIT = null; rerender(); };
     $$('[data-edit]').forEach(b => (b.onclick = () => { AS_EDIT = Number(b.dataset.edit); rerender(); window.scrollTo(0, 0); }));
-    $$('[data-del]').forEach(b => (b.onclick = () => {
-      if (!confirm('¿Eliminar el asiento?')) return;
+    $$('[data-del]').forEach(b => (b.onclick = async () => {
+      if (!await ask('¿Eliminar el asiento?')) return;
       if (commit(d => { d.asientos = d.asientos.filter(x => x.id !== Number(b.dataset.del)); })) { toast('Asiento eliminado'); rerender(); }
     }));
   }
@@ -1158,12 +1176,12 @@
         ${card('Validaciones previas', val.map(v => `<div class="status"><span>${esc(v.msg)}</span><b>${pill(icon[v.nivel], v.nivel === 'ok' ? 'ok' : v.nivel === 'warn' ? 'warn' : 'bad')}</b></div>`).join(''))}
       </div>
       ${closed ? tblCard('Asientos de cierre generados', lines, [{ k: 'num', l: 'N°' }, { k: 'glosa', l: 'Glosa' }, { k: 'cuenta', l: 'Cuenta' }, { k: 'nombre', l: 'Denominación' }, { k: 'debe', l: 'Debe', f: 'money0' }, { k: 'haber', l: 'Haber', f: 'money0' }], { name: 'asientos-cierre' }) : ''}`);
-    if ($('#doClose')) $('#doClose').onclick = () => {
-      if (!confirm('¿Ejecutar el cierre del ejercicio? El periodo quedará bloqueado para cambios.')) return;
+    if ($('#doClose')) $('#doClose').onclick = async () => {
+      if (!await ask('¿Ejecutar el cierre del ejercicio? El periodo quedará bloqueado para cambios.')) return;
       if (commit(d => { d.cierre = { realizado: true, fecha: today() }; }, { allowClosed: true })) { toast('Cierre ejecutado'); refreshChrome(); rerender(); }
     };
-    if ($('#reopen')) $('#reopen').onclick = () => {
-      if (!confirm('¿Revertir el cierre? Se eliminarán los asientos de cierre.')) return;
+    if ($('#reopen')) $('#reopen').onclick = async () => {
+      if (!await ask('¿Revertir el cierre? Se eliminarán los asientos de cierre.')) return;
       if (commit(d => { d.cierre = { realizado: false }; }, { allowClosed: true })) { toast('Periodo reabierto'); refreshChrome(); rerender(); }
     };
   }
@@ -1278,20 +1296,20 @@
       const f = e.target.files[0];
       if (!f) return;
       const rd = new FileReader();
-      rd.onload = () => {
+      rd.onload = async () => {
         try {
           const x = JSON.parse(rd.result);
           if (!x || x.schema !== E.SCHEMA || !x.empresa) throw new Error('El archivo no corresponde a un backup de esta versión (V5).');
           E.compute(x);
-          if (!confirm('¿Reemplazar los datos actuales con el backup?')) return;
+          if (!await ask('¿Reemplazar los datos actuales con el backup?')) return;
           DB = x; persist(DB); REV++; toast('Backup restaurado'); refreshChrome(); navigate('dashboard');
-        } catch (err) { alert('No se pudo restaurar: ' + err.message); }
+        } catch (err) { notify('No se pudo restaurar: ' + err.message); }
       };
       rd.readAsText(f);
     };
-    $('#reset').onclick = () => { if (confirm('¿Reemplazar todo con los datos de ejemplo?')) { DB = Seed.create(); persist(DB); REV++; toast('Datos de ejemplo restaurados'); refreshChrome(); navigate('dashboard'); } };
-    $('#blank').onclick = () => {
-      if (!confirm('¿Borrar todo y empezar con una base vacía (se conserva el plan de cuentas PCGE)?')) return;
+    $('#reset').onclick = async () => { if (await ask('¿Reemplazar todo con los datos de ejemplo?')) { DB = Seed.create(); persist(DB); REV++; toast('Datos de ejemplo restaurados'); refreshChrome(); navigate('dashboard'); } };
+    $('#blank').onclick = async () => {
+      if (!await ask('¿Borrar todo y empezar con una base vacía (se conserva el plan de cuentas PCGE)?')) return;
       const x = E.emptyDb();
       x.empresa = { ...DB.empresa, cajaInicial: 0 };
       DB = x; persist(DB); REV++; toast('Base vacía creada'); refreshChrome(); navigate('dashboard');

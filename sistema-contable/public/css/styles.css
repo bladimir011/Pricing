@@ -185,3 +185,10 @@ td.nowrap{white-space:nowrap}
   th{position:static}
   body{background:#fff}
 }
+
+/* Diálogos */
+.modal-back{position:fixed;inset:0;background:rgba(16,24,40,.45);display:grid;place-items:center;z-index:200;padding:16px}
+.modal{background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:20px;max-width:460px;width:100%}
+.modal p{margin:0 0 6px;font-size:14px;line-height:1.55;white-space:pre-line;color:var(--ink)}
+.modal .actions{justify-content:flex-end}
+.btn:focus-visible,.nav:focus-visible{outline:2px solid var(--uni);outline-offset:2px}
