@@ -12,7 +12,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 function createRuntime(distDir, opts = {}) {
-  const sheets = new Map();
+  // opts.from: otro runtime cuya hoja de cálculo y propiedades se reutilizan (simula actualizar el código).
+  const sheets = opts.from ? opts.from.sheets : new Map();
   let order = 0;
   const ctxRef = {};
 
@@ -78,15 +79,16 @@ function createRuntime(distDir, opts = {}) {
     getSheets: () => [...sheets.values()].sort((a, b) => a.order - b.order),
     deleteSheet: s => sheets.delete(s.name)
   };
-  if (opts.defaultSheet !== false) spreadsheet.insertSheet('Hoja 1');
+  if (opts.defaultSheet !== false && !opts.from) spreadsheet.insertSheet('Hoja 1');
 
-  const props = new Map();
+  const props = opts.from ? opts.from.props : new Map();
   const cache = new Map();
   const uiCalls = [];
   const ui = {
     alert: (...a) => { uiCalls.push(a); return 'YES'; },
-    Button: { YES: 'YES', NO: 'NO' },
-    ButtonSet: { OK: 'OK', YES_NO: 'YES_NO' },
+    prompt: (...a) => { uiCalls.push(a); const t = runtime.promptAnswer; return { getSelectedButton: () => (t === null ? 'CANCEL' : 'OK'), getResponseText: () => String(t) }; },
+    Button: { YES: 'YES', NO: 'NO', OK: 'OK', CANCEL: 'CANCEL' },
+    ButtonSet: { OK: 'OK', YES_NO: 'YES_NO', OK_CANCEL: 'OK_CANCEL' },
     createMenu: () => { const m = { addItem: () => m, addSeparator: () => m, addToUi: () => m }; return m; }
   };
 
@@ -140,7 +142,7 @@ function createRuntime(distDir, opts = {}) {
   ['Engine.gs', 'Seed.gs', 'Code.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(distDir, f), 'utf8'), ctx, { filename: f }));
 
   const runtime = {
-    ctx, sheets, spreadsheet, props, cache, uiCalls, uiAvailable: false,
+    ctx, sheets, spreadsheet, props, cache, uiCalls, uiAvailable: false, promptAnswer: '1',
     /** Llama una función como lo haría google.script.run (argumentos y respuesta serializados). */
     run(fn, ...args) {
       if (fn.endsWith('_') || typeof ctx[fn] !== 'function') throw new Error('Función no disponible: ' + fn);

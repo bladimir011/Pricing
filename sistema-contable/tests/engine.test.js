@@ -148,3 +148,48 @@ test('asignación con redondeo cuadra al céntimo', () => {
   near(parts.reduce((a, b) => a + b, 0), 100, 'suma 100');
   assert.deepEqual(E.allocate(50, [0, 0]), [0, 0]);
 });
+
+test('hoja de cálculo de costeo: cuadra con la contabilidad de costos', () => {
+  const db = Seed.create();
+  const c = E.compute(db);
+  const sheets = E.costeoSheets(c);
+  assert.equal(sheets.length, 10);
+  sheets.forEach(s => {
+    assert.ok(s.name.length <= 31 && !/[\\/?*[\]:]/.test(s.name), `nombre válido para Excel: ${s.name}`);
+    s.rows.forEach((r, i) => assert.equal(r.c.length, s.cols.length, `${s.name} fila ${i + 1} con todas sus columnas`));
+  });
+  const res = sheets.find(s => s.name === 'Resumen OT');
+  const tot = res.rows[res.rows.length - 1].c;
+  const head = res.cols.map(x => x.l);
+  near(tot[head.indexOf('Costo total')], E.sumBy(Object.values(c.cost.porOT), 'total'), 'total del resumen = suma de hojas de costos');
+  near(tot[head.indexOf('% MD')] + tot[head.indexOf('% MOD')] + tot[head.indexOf('% CIF')], 1, 'los porcentajes suman 100 %');
+  E.costeoSheets(E.compute(E.emptyDb())).forEach(s => assert.ok(Array.isArray(s.rows), `base vacía: ${s.name}`));
+});
+
+test('ratios: cada ratio tiene fórmula, cálculo y semáforo', () => {
+  const r = E.ratios(E.compute(Seed.create()));
+  assert.equal(r.length, 10);
+  r.forEach(x => {
+    assert.ok(['Liquidez', 'Solvencia', 'Rentabilidad'].includes(x.grupo), x.nombre);
+    assert.ok(['ok', 'warn', 'bad'].includes(x.estado), `${x.nombre}: estado ${x.estado}`);
+    assert.ok(x.formula && x.lectura && x.calculo, `${x.nombre}: textos`);
+  });
+});
+
+test('empresa nueva: vacía, con datos de ejemplo o copiando tablas maestras', () => {
+  const base = Seed.create();
+  const v = E.newCompanyDb({ razon: 'Vacía SAC', ruc: '20111111111', periodo: '2026-11' }, 'vacia', null, () => Seed.create());
+  assert.equal(v.empresa.razon, 'Vacía SAC');
+  assert.equal(v.empresa.periodo, '2026-11');
+  assert.equal(v.materiales.length + v.compras.length, 0);
+  const ej = E.newCompanyDb({ razon: 'Ejemplo SAC' }, 'ejemplo', null, () => Seed.create());
+  assert.equal(ej.compras.length, base.compras.length);
+  assert.equal(ej.empresa.razon, 'Ejemplo SAC');
+  const cp = E.newCompanyDb({ razon: 'Copia SAC' }, 'copia', base, () => Seed.create());
+  assert.equal(cp.materiales.length, base.materiales.length);
+  assert.equal(cp.conceptosCIF.length, base.conceptosCIF.length);
+  assert.equal(cp.compras.length + cp.ventas.length + cp.asientos.length, 0, 'no copia documentos');
+  cp.materiales[0].nombre = 'cambiado';
+  assert.notEqual(base.materiales[0].nombre, 'cambiado', 'la copia es independiente');
+  E.compute(cp);
+});

@@ -3,7 +3,11 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
-<title>Sistema Contable y de Costos UNI · OMEGA SAC</title>
+<title>Sistema Contable y de Costos UNI</title>
+<script>
+  // Aplica el tema guardado antes de dibujar la página (evita el parpadeo).
+  (function () { try { var t = localStorage.getItem('uni_tema'); if (t === 'light' || t === 'dim' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {} })();
+</script>
 <?!= include('css'); ?>
 </head>
 <body>
@@ -11,13 +15,14 @@
   <div class="login-left">
     <div class="brand"><div class="brand-mark">UNI</div><div><div class="brand-title">Sistema Contable y de Costos</div><div class="brand-sub">Curso de Sistema de Costos · Proyecto académico</div></div></div>
     <div class="login-copy">
-      <span class="demo-chip" style="background:rgba(255,255,255,.14);color:#fff">VERSIÓN 5 · COSTEO POR ÓRDENES DE TRABAJO</span>
+      <span class="login-chip">VERSIÓN 5 · MULTIEMPRESA · COSTEO POR ÓRDENES DE TRABAJO</span>
       <h1>Contabilidad general y de costos integradas.</h1>
-      <p>Compras con kardex por materia prima, planilla clasificada (MOD, MOI, administración y ventas), CIF distribuidos con inductores, libro mayor de fábrica, hoja de costos por O/T, libros contables y estados financieros generados automáticamente.</p>
+      <p>Compras con kardex por materia prima, planilla clasificada (MOD, MOI, administración y ventas), CIF distribuidos con inductores, libro mayor de fábrica, hoja de costos por O/T, libros contables y estados financieros generados automáticamente, para una o varias empresas.</p>
     </div>
     <div class="login-footer">Universidad Nacional de Ingeniería · Lima, Perú</div>
   </div>
   <div class="login-right">
+    <div class="login-theme"><div class="theme-switch" data-theme-switch></div></div>
     <form class="login-card" id="loginForm">
       <h2>Iniciar sesión</h2><p>Ingresa tus credenciales para acceder.</p>
       <div id="loginError" class="error hidden"></div>
@@ -29,22 +34,38 @@
   </div>
 </section>
 
+<section class="company-screen hidden" id="companyScreen">
+  <div class="company-box" id="companyBox"></div>
+</section>
+
 <div class="app hidden" id="app">
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="brand-mark">UNI</div><div><div class="brand-title">Sistema Contable</div><div class="brand-sub" id="sideCompany">OMEGA SAC</div></div></div>
+    <div class="brand"><div class="brand-mark">UNI</div><div><div class="brand-title">Sistema Contable</div><div class="brand-sub" id="sideCompany">Empresa</div></div></div>
     <nav id="nav"></nav>
-    <div class="sidebar-bottom"><div class="userbox"><b id="userName">Administrador UNI</b><span id="userRole">Perfil: ADMIN</span></div><button class="nav" id="logoutBtn">Cerrar sesión</button></div>
+    <div class="sidebar-bottom">
+      <div class="userbox"><b id="userName">Administrador UNI</b><span id="userRole">Perfil: ADMIN</span></div>
+      <button class="nav" id="switchCompanyBtn">Cambiar empresa</button>
+      <button class="nav" id="logoutBtn">Cerrar sesión</button>
+    </div>
   </aside>
   <main class="main">
     <header class="topbar">
-      <div style="display:flex;align-items:center;gap:10px"><button class="btn btn-secondary mobile-menu" id="menuBtn" aria-label="Menú">☰</button><h1 id="pageTitle">Panel general</h1></div>
-      <div class="top-actions"><span class="badge" id="saveBadge" hidden></span><span class="badge" id="periodBadge">Periodo</span><button class="btn btn-secondary btn-sm no-print" id="printBtn">Imprimir</button></div>
+      <div style="display:flex;align-items:center;gap:10px;min-width:0"><button class="btn btn-secondary mobile-menu" id="menuBtn" aria-label="Menú">☰</button><h1 id="pageTitle">Panel general</h1></div>
+      <div class="top-actions">
+        <span class="badge" id="saveBadge" hidden></span>
+        <span class="badge" id="periodBadge">Periodo</span>
+        <div class="theme-switch no-print" data-theme-switch></div>
+        <button class="btn btn-secondary btn-sm no-print" id="helpBtn" title="Manual de esta pantalla">Ayuda</button>
+        <button class="btn btn-secondary btn-sm no-print" id="printBtn">Imprimir</button>
+      </div>
     </header>
     <section class="content" id="content"></section>
   </main>
 </div>
 
 <?!= include('js_engine'); ?>
+<?!= include('js_xlsx'); ?>
+<?!= include('js_manual'); ?>
 <?!= include('js_backend'); ?>
 <?!= include('js_app'); ?>
 </body>

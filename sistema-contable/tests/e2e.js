@@ -143,6 +143,65 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   await page.click('.modal [data-r="1"]');
   check(!(await page.textContent('#periodBadge')).includes('CERRADO'), 'revierte el cierre');
 
+  console.log('Temas de color');
+  for (const t of ['dim', 'dark', 'light']) {
+    await page.click(`.topbar [data-theme-switch] button[data-t="${t}"]`);
+    const info = await page.evaluate(() => ({ t: document.documentElement.dataset.theme, bg: getComputedStyle(document.querySelector('.card') || document.body).backgroundColor, ink: getComputedStyle(document.body).color }));
+    check(info.t === t && (t === 'light' ? info.bg === 'rgb(255, 255, 255)' : info.bg !== 'rgb(255, 255, 255)'), `tema ${t}: fondo de tarjetas ${info.bg}`);
+    if (shots) { await page.click('.nav[data-view="dashboard"]'); await page.screenshot({ path: path.join(shots, `tema-${t}.png`) }); }
+  }
+
+  console.log('Ratios en cuadros');
+  await page.click('.nav[data-view="ratios"]');
+  check((await page.$$('.ratio')).length === 10, 'muestra 10 cuadros de ratios');
+  check((await page.$$('.ratio.ok, .ratio.warn, .ratio.bad')).length === 10, 'cada ratio tiene su color de situación');
+  if (shots) await page.screenshot({ path: path.join(shots, 'ratios.png'), fullPage: true });
+
+  console.log('Hoja de cálculo de costeo');
+  await page.click('.nav[data-view="hojaCalculo"]');
+  check((await page.$$('.sheet-tabs button')).length === 10, '10 hojas de costeo');
+  await page.click('.sheet-tabs button[data-hoja="3"]');
+  check((await page.textContent('.card-head h3')).includes('CIF'), 'cambia a la hoja de distribución de CIF');
+  await page.click('.sheet td[data-ref="D2"]');
+  check((await page.textContent('#cellRef')) === 'D2' && Number(await page.textContent('#cellVal')) > 0, 'la barra de fórmulas muestra la celda');
+  const [xl] = await Promise.all([page.waitForEvent('download'), page.click('#xlsxBtn')]);
+  const xb = fs.readFileSync(await xl.path());
+  check(xb.slice(0, 2).toString() === 'PK' && xb.includes('xl/workbook.xml') && xl.suggestedFilename().endsWith('.xlsx'), 'descarga el libro Excel (.xlsx)');
+  if (shots) await page.screenshot({ path: path.join(shots, 'hoja-calculo.png'), fullPage: true });
+
+  console.log('Manual integrado y ayuda contextual');
+  await page.click('.nav[data-view="kardex"]');
+  await page.click('#helpBtn');
+  check((await page.textContent('#pageTitle')) === 'Manual de usuario' && (await page.textContent('.manual-body h2')).toLowerCase().includes('kardex'), 'Ayuda abre la sección del kardex');
+  check((await page.$$('.manual-index [data-msec]')).length >= 15, 'el manual tiene todas las secciones');
+  await page.click('.manual-body [data-go="kardex"]');
+  check((await page.textContent('#pageTitle')).startsWith('Kardex'), 'el botón del manual abre el módulo');
+
+  console.log('Multiempresa');
+  await page.click('.nav[data-view="empresas"]');
+  await page.fill('#nRazon', 'Industrias Beta SAC');
+  await page.fill('#nRuc', '20999888777');
+  await page.selectOption('#nModo', 'copia');
+  await page.click('#nSave');
+  await page.waitForSelector('[data-eopen]');
+  check(await page.evaluate(() => window.__app.empresas.length) === 2, 'crea una segunda empresa');
+  await page.click('[data-eopen]');
+  await page.waitForFunction(() => window.__app.db && window.__app.db.empresa.razon === 'Industrias Beta SAC');
+  const beta = await page.evaluate(() => ({ c: window.__app.db.compras.length, m: window.__app.db.materiales.length, id: window.__app.empresaId }));
+  check(beta.c === 0 && beta.m === 5, 'la empresa nueva tiene sus propias tablas (sin documentos de la otra)');
+  if (shots) await page.screenshot({ path: path.join(shots, 'empresas.png') });
+  await page.click('#switchCompanyBtn');
+  check((await page.$$('.company-card')).length === 2, 'pantalla para elegir entre 2 empresas');
+  if (shots) await page.screenshot({ path: path.join(shots, 'elegir-empresa.png') });
+  await page.click('.company-card[data-pick="1"]');
+  await page.waitForFunction(() => window.__app.empresaId === 1);
+  check(await page.evaluate(() => window.__app.db.compras.length) > 10, 'vuelve a OMEGA SAC con sus datos');
+  await page.click('.nav[data-view="empresas"]');
+  await page.click(`[data-edel="${beta.id}"]`);
+  await page.click('.modal [data-r="1"]');
+  await page.waitForFunction(() => window.__app.empresas.length === 1);
+  check(true, 'elimina la empresa');
+
   console.log('Persistencia y vista móvil');
   await page.reload();
   check(await page.isVisible('#loginScreen'), 'al recargar pide login');

@@ -40,6 +40,8 @@ const SHIM = `<script>
 
 let failures = 0;
 const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { failures++; console.log('  ✖ ' + msg); } };
+/** Fila de una hoja como objeto, según los encabezados de la fila 1. */
+const rowsOf = (rt, name) => { const v = rt.sheet(name).rows(); return v.slice(1).map(r => Object.fromEntries(v[0].map((h, i) => [h, r[i]]))); };
 
 (async () => {
   build();
@@ -93,12 +95,13 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   check(true, 'ingresa con admin / uni2026');
   check((await page.textContent('#userName')).includes('Administrador'), 'muestra el nombre del usuario');
   const menu = await page.$$eval('.nav[data-view]', b => b.map(x => x.dataset.view));
-  check(menu.includes('sheets') && menu.includes('usuarios') && menu.length >= 38, `menú con opciones de Google Sheets (${menu.length})`);
+  check(['sheets', 'usuarios', 'empresas', 'hojaCalculo', 'manual'].every(v => menu.includes(v)) && menu.length >= 40, `menú con Google Sheets, empresas, hoja de costeo y manual (${menu.length})`);
+  check(await page.evaluate(() => window.__app.empresaId) === 1, 'con una sola empresa la abre directamente');
 
   console.log('Todos los módulos');
   for (const v of menu) {
     await page.click(`.nav[data-view="${v}"]`);
-    await page.waitForTimeout(v === 'sheets' || v === 'usuarios' ? 400 : 30);
+    await page.waitForTimeout(v === 'sheets' || v === 'usuarios' ? 400 : 40);
     check(!(await page.$('text=No se pudo abrir el módulo')), `abre ${v}`);
   }
 
@@ -113,9 +116,9 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   await page.fill('#items .item-row [name="costoUnit"]', '7');
   await page.click('#cSave');
   check((await savedOk()).includes('Guardado'), 'indicador "Guardado en Google Sheets"');
-  const fila = rt.sheet('Compras').rows().find(r => r[3] === 'F009-00001');
-  check(!!fila && fila[5] === '20123123123', 'la compra está en la hoja Compras (RUC como texto)');
-  check(rt.sheet('ComprasDetalle').rows().some(r => r[0] === fila[0] && r[4] === 100), 'el ítem está en la hoja ComprasDetalle');
+  const fila = rowsOf(rt, 'Compras').find(r => r.documento === 'F009-00001');
+  check(!!fila && fila.ruc === '20123123123' && fila.empresaId === 1, 'la compra está en la hoja Compras (empresa 1, RUC como texto)');
+  check(rowsOf(rt, 'ComprasDetalle').some(r => r.compraId === fila.id && r.cantidad === 100), 'el ítem está en la hoja ComprasDetalle');
   if (shots) await page.screenshot({ path: path.join(shots, 'gas-compras.png') });
 
   console.log('Stock insuficiente se rechaza antes de llamar al servidor');
@@ -133,7 +136,8 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
 
   console.log('Conflicto: otro usuario cambia los datos');
   const other = rt.run('login', 'admin', 'uni2026');
-  rt.run('saveChanges', other.token, { tesoreria: other.db.tesoreria.slice(0, 3) }, other.rev);
+  const odb = rt.run('openEmpresa', other.token, 1);
+  rt.run('saveChanges', other.token, 1, { tesoreria: odb.db.tesoreria.slice(0, 3) }, odb.rev);
   await page.click('.nav[data-view="config"]');
   await page.fill('#f_razon', 'OMEGA SAC (editado)');
   await page.click('#cfgSave');
@@ -148,7 +152,8 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   check((await page.textContent('#shInfo')).includes('ComprasDetalle'), 'lista las hojas de la base de datos');
   await page.click('#genRep');
   await page.waitForSelector('#repOut .ok-note', { timeout: 20000 });
-  check(!!rt.sheet('R_LibroDiario') && !!rt.sheet('R_Kardex') && !!rt.sheet('R_HojaCostos'), 'crea las hojas R_ (diario, kardex, hoja de costos…)');
+  check(!!rt.sheet('R_LibroDiario') && !!rt.sheet('R_Kardex') && !!rt.sheet('R_HojaCostos') && !!rt.sheet('R_Ratios'), 'crea las hojas R_ (diario, kardex, hoja de costos, ratios…)');
+  check(!!rt.sheet('C_Resumen OT') && !!rt.sheet('C_Distribución CIF'), 'crea las hojas C_ de la hoja de cálculo de costeo');
   if (shots) await page.screenshot({ path: path.join(shots, 'gas-sheets.png') });
 
   console.log('Usuarios');
@@ -160,7 +165,7 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   await page.fill('#uPass', 'clave123');
   await page.click('#uSave');
   await page.waitForSelector('[data-udel="profesor"]', { timeout: 15000 });
-  check(rt.sheet('Usuarios').rows().some(r => r[0] === 'profesor' && r[2] === 'CONSULTA'), 'crea el usuario en la hoja Usuarios');
+  check(rowsOf(rt, 'Usuarios').some(r => r.usuario === 'profesor' && r.rol === 'CONSULTA' && r.empresas === '1'), 'crea el usuario en la hoja Usuarios con su empresa');
   if (shots) await page.screenshot({ path: path.join(shots, 'gas-usuarios.png') });
 
   console.log('Perfil de solo consulta');
@@ -173,11 +178,68 @@ const check = (cond, msg) => { if (cond) console.log('  ✔ ' + msg); else { fai
   await page.waitForSelector('.toast.err');
   check((await page.textContent('.toast.err')).includes('solo consulta'), 'no permite modificar');
 
-  console.log('Persistencia y sesión vencida');
+  console.log('Persistencia');
   await page.reload();
   await login('admin', 'uni2026');
   await page.waitForSelector('#app:not(.hidden)');
   check(await page.evaluate(() => window.__app.db.compras.some(c => c.documento === 'F009-00001')), 'los datos vienen de Google Sheets al volver a entrar');
+
+  console.log('Multiempresa en Google Sheets');
+  await page.click('.nav[data-view="empresas"]');
+  await page.fill('#nRazon', 'Textil Andina SAC');
+  await page.fill('#nRuc', '20999888777');
+  await page.selectOption('#nModo', 'copia');
+  await page.click('#nSave');
+  await page.waitForSelector('[data-eopen]', { timeout: 15000 });
+  check(rowsOf(rt, 'Empresas').map(e => e.razon).join('|') === 'OMEGA SAC|Textil Andina SAC', 'la empresa nueva está en la hoja Empresas');
+  if (shots) await page.screenshot({ path: path.join(shots, 'gas-empresas.png') });
+  await page.click('[data-eopen="2"]');
+  await page.waitForFunction(() => window.__app.empresaId === 2, null, { timeout: 15000 });
+  check(await page.evaluate(() => window.__app.db.compras.length === 0 && window.__app.db.materiales.length > 0), 'abre la empresa 2 con sus propias tablas');
+  await page.click('.nav[data-view="config"]');
+  await page.fill('#f_direccion', 'Jr. Textil 100, Lima');
+  await page.click('#cfgSave');
+  check((await savedOk()).includes('Guardado'), 'guarda cambios de la empresa 2');
+  check(rowsOf(rt, 'Empresas').find(e => e.id === 2).direccion === 'Jr. Textil 100, Lima' && rowsOf(rt, 'Empresas').find(e => e.id === 1).direccion !== 'Jr. Textil 100, Lima', 'el cambio solo afecta a la empresa 2');
+  await page.click('#switchCompanyBtn');
+  await page.waitForSelector('.company-card[data-pick="1"]');
+  check((await page.$$('.company-card')).length === 2, 'pantalla para elegir empresa');
+  if (shots) await page.screenshot({ path: path.join(shots, 'gas-elegir-empresa.png') });
+  await page.click('.company-card[data-pick="1"]');
+  await page.waitForFunction(() => window.__app.empresaId === 1, null, { timeout: 15000 });
+  check(await page.evaluate(() => window.__app.db.compras.some(c => c.documento === 'F009-00001')), 'vuelve a OMEGA SAC con sus datos');
+
+  console.log('Temas, hoja de cálculo de costeo y manual');
+  await page.click('.topbar [data-theme-switch] button[data-t="dim"]');
+  check(await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dim', 'tema Tenue');
+  await page.click('.nav[data-view="hojaCalculo"]');
+  await page.waitForSelector('[data-hoja]');
+  rt.sheets.delete('C_Resumen OT');
+  await page.click('#gsBtn');
+  await page.waitForSelector('#gsOut .ok-note', { timeout: 15000 });
+  check(!!rt.sheet('C_Resumen OT'), 'envía la hoja de costeo a Google Sheets (hojas C_)');
+  if (shots) await page.screenshot({ path: path.join(shots, 'gas-hoja-costeo.png') });
+  await page.click('#helpBtn');
+  await page.waitForSelector('.manual');
+  check((await page.textContent('#content')).toLowerCase().includes('hoja de cálculo'), 'el botón Ayuda abre el manual en la sección de la pantalla');
+  await page.click('.topbar [data-theme-switch] button[data-t="light"]');
+
+  console.log('Usuario con dos empresas');
+  rt.run('saveUser', other.token, 1, { usuario: 'jorihuela', nombre: 'Jennifer', rol: 'CONTADOR', activo: true, clave: 'clave123', nuevo: true, empresas: [1, 2] });
+  await page.click('#logoutBtn');
+  await login('jorihuela', 'clave123');
+  await page.waitForSelector('#companyScreen:not(.hidden)');
+  check((await page.$$('.company-card')).length === 2, 'al ingresar elige entre sus 2 empresas');
+  await page.click('.company-card[data-pick="2"]');
+  await page.waitForFunction(() => window.__app.empresaId === 2, null, { timeout: 15000 });
+  check((await page.textContent('#sideCompany')).includes('Textil'), 'trabaja en Textil Andina SAC');
+  await page.click('#logoutBtn');
+
+  console.log('Sesión vencida');
+  await login('admin', 'uni2026');
+  await page.waitForSelector('#companyScreen:not(.hidden)');
+  await page.click('.company-card[data-pick="1"]');
+  await page.waitForFunction(() => window.__app.empresaId === 1, null, { timeout: 15000 });
   rt.cache.clear();
   await page.click('.nav[data-view="config"]');
   await page.fill('#f_direccion', 'Av. Industrial 456, Lima');

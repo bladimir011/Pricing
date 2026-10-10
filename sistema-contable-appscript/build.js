@@ -26,6 +26,10 @@ function indexHtml() {
   const body = web.slice(web.indexOf('<body>') + 6, web.indexOf('<script src='));
   const demo = 'Login demostrativo (sin servidor). Al recargar la página se vuelve a pedir.';
   if (!body.includes(demo)) throw new Error('No se encontró el texto del recuadro de acceso en index.html');
+  // Script del <head> que aplica el tema guardado (Claro, Tenue u Oscuro) antes de dibujar la página.
+  const m = web.match(/<head>[\s\S]*?(<script>[\s\S]*?<\/script>)[\s\S]*?<\/head>/);
+  if (!m || !m[1].includes('uni_tema')) throw new Error('No se encontró el script de tema en el <head> de index.html');
+  const themeScript = m[1];
   const gasBody = body.replace(demo, 'Usuarios guardados en Google Sheets. Cambia la contraseña inicial en Utilitarios → Usuarios y accesos.')
     .replace('Usuario: <b>admin</b> · Contraseña: <b>uni2026</b>', 'Usuario inicial: <b>admin</b> · Contraseña inicial: <b>uni2026</b>');
   return `<!DOCTYPE html>
@@ -33,10 +37,13 @@ function indexHtml() {
 <head>
 <base target="_top">
 <meta charset="utf-8">
-<title>Sistema Contable y de Costos UNI · OMEGA SAC</title>
+<title>Sistema Contable y de Costos UNI</title>
+${themeScript}
 <?!= include('css'); ?>
 </head>
 <body>${gasBody}<?!= include('js_engine'); ?>
+<?!= include('js_xlsx'); ?>
+<?!= include('js_manual'); ?>
 <?!= include('js_backend'); ?>
 <?!= include('js_app'); ?>
 </body>
@@ -54,6 +61,8 @@ function build() {
     'Index.html': indexHtml(),
     'css.html': `<style>\n${read(path.join(WEB, 'css', 'styles.css'))}\n</style>\n`,
     'js_engine.html': script(engine, 'sistema-contable/public/js/engine.js'),
+    'js_xlsx.html': script(read(path.join(WEB, 'js', 'xlsx.js')), 'sistema-contable/public/js/xlsx.js'),
+    'js_manual.html': script(read(path.join(WEB, 'js', 'manual.js')), 'sistema-contable/public/js/manual.js'),
     'js_backend.html': script(read(path.join(SRC, 'backend.js')), 'sistema-contable-appscript/src/backend.js'),
     'js_app.html': script(read(path.join(WEB, 'js', 'app.js')), 'sistema-contable/public/js/app.js'),
     'appsscript.json': read(path.join(SRC, 'appsscript.json'))

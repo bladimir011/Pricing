@@ -829,21 +829,41 @@
     return { rows, fin };
   }
 
+  /** Ratios con su cálculo, una lectura y una semáforo referencial (ok, warn, bad). */
   function ratios(ctx) {
     const es = estadoSituacion(ctx), rf = resultadosFuncion(ctx);
     const exist = sumBy(es.AC.filter(r => /Mercader|Productos|Materias|Materiales/.test(r.rubro)), 'valor');
     const div = (a, b) => (Math.abs(b) > EPS ? a / b : null);
+    const band = (v, okMin, warnMin) => (v == null ? '' : v >= okMin ? 'ok' : v >= warnMin ? 'warn' : 'bad');
+    const bandLow = (v, okMax, warnMax) => (v == null ? '' : v <= okMax ? 'ok' : v <= warnMax ? 'warn' : 'bad');
+    const S = v => 'S/ ' + Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const P = v => (v == null ? '-' : (v * 100).toFixed(1) + '%');
+    const X = v => (v == null ? '-' : v.toFixed(2));
+    const mk = (grupo, nombre, formula, num, den, tipo, estado, lectura) => {
+      const valor = tipo === 'soles' ? num : div(num, den);
+      return { grupo, nombre, formula, num: r2(num), den: r2(den), valor, tipo, estado: estado(valor), lectura: valor == null ? 'No aplica: el denominador es cero.' : lectura(valor), calculo: tipo === 'soles' ? S(num) : `${S(num)} ÷ ${S(den)}` };
+    };
     return [
-      { grupo: 'Liquidez', nombre: 'Liquidez corriente', formula: 'Activo corriente / Pasivo corriente', valor: div(es.tAC, es.tPC), tipo: 'veces' },
-      { grupo: 'Liquidez', nombre: 'Prueba ácida', formula: '(Activo corriente - Existencias) / Pasivo corriente', valor: div(es.tAC - exist, es.tPC), tipo: 'veces' },
-      { grupo: 'Liquidez', nombre: 'Capital de trabajo', formula: 'Activo corriente - Pasivo corriente', valor: r2(es.tAC - es.tPC), tipo: 'soles' },
-      { grupo: 'Solvencia', nombre: 'Endeudamiento total', formula: 'Pasivo total / Activo total', valor: div(es.tPasivo, es.tActivo), tipo: '%' },
-      { grupo: 'Solvencia', nombre: 'Endeudamiento patrimonial', formula: 'Pasivo total / Patrimonio', valor: div(es.tPasivo, es.tPAT), tipo: 'veces' },
-      { grupo: 'Rentabilidad', nombre: 'Margen bruto', formula: 'Utilidad bruta / Ventas', valor: div(rf.ub, rf.ventas), tipo: '%' },
-      { grupo: 'Rentabilidad', nombre: 'Margen operativo', formula: 'Utilidad operativa / Ventas', valor: div(rf.uo, rf.ventas), tipo: '%' },
-      { grupo: 'Rentabilidad', nombre: 'Margen neto', formula: 'Utilidad neta / Ventas', valor: div(rf.neto, rf.ventas), tipo: '%' },
-      { grupo: 'Rentabilidad', nombre: 'ROA', formula: 'Utilidad neta / Activo total', valor: div(rf.neto, es.tActivo), tipo: '%' },
-      { grupo: 'Rentabilidad', nombre: 'ROE', formula: 'Utilidad neta / Patrimonio', valor: div(rf.neto, es.tPAT), tipo: '%' }
+      mk('Liquidez', 'Liquidez corriente', 'Activo corriente ÷ Pasivo corriente', es.tAC, es.tPC, 'veces', v => band(v, 1.5, 1),
+        v => `Por cada S/ 1 de deuda de corto plazo hay S/ ${X(v)} de activo corriente.`),
+      mk('Liquidez', 'Prueba ácida', '(Activo corriente − Existencias) ÷ Pasivo corriente', r2(es.tAC - exist), es.tPC, 'veces', v => band(v, 1, 0.7),
+        v => `Sin vender existencias, la empresa cubre ${X(v)} veces sus deudas de corto plazo.`),
+      mk('Liquidez', 'Capital de trabajo', 'Activo corriente − Pasivo corriente', r2(es.tAC - es.tPC), 1, 'soles', v => (v > 0 ? 'ok' : v === 0 ? 'warn' : 'bad'),
+        v => (v >= 0 ? `Quedan ${S(v)} de recursos de corto plazo después de pagar las deudas de corto plazo.` : `Faltan ${S(-v)} para cubrir las deudas de corto plazo.`)),
+      mk('Solvencia', 'Endeudamiento total', 'Pasivo total ÷ Activo total', es.tPasivo, es.tActivo, '%', v => bandLow(v, 0.5, 0.7),
+        v => `El ${P(v)} de los activos está financiado con terceros.`),
+      mk('Solvencia', 'Endeudamiento patrimonial', 'Pasivo total ÷ Patrimonio', es.tPasivo, es.tPAT, 'veces', v => bandLow(v, 1, 2),
+        v => `Por cada S/ 1 de patrimonio la empresa debe S/ ${X(v)}.`),
+      mk('Rentabilidad', 'Margen bruto', 'Utilidad bruta ÷ Ventas', rf.ub, rf.ventas, '%', v => band(v, 0.3, 0.15),
+        v => `De cada S/ 100 vendidos quedan S/ ${(v * 100).toFixed(2)} después del costo de ventas.`),
+      mk('Rentabilidad', 'Margen operativo', 'Utilidad operativa ÷ Ventas', rf.uo, rf.ventas, '%', v => band(v, 0.1, 0),
+        v => `De cada S/ 100 vendidos quedan S/ ${(v * 100).toFixed(2)} después de los gastos de operación.`),
+      mk('Rentabilidad', 'Margen neto', 'Utilidad neta ÷ Ventas', rf.neto, rf.ventas, '%', v => band(v, 0.05, 0),
+        v => `De cada S/ 100 vendidos, S/ ${(v * 100).toFixed(2)} son utilidad neta.`),
+      mk('Rentabilidad', 'ROA (del periodo)', 'Utilidad neta ÷ Activo total', rf.neto, es.tActivo, '%', v => band(v, 0.01, 0),
+        v => `Cada S/ 100 de activos generaron S/ ${(v * 100).toFixed(2)} de utilidad en el periodo.`),
+      mk('Rentabilidad', 'ROE (del periodo)', 'Utilidad neta ÷ Patrimonio', rf.neto, es.tPAT, '%', v => band(v, 0.015, 0),
+        v => `Cada S/ 100 aportados por los socios generaron S/ ${(v * 100).toFixed(2)} de utilidad en el periodo.`)
     ];
   }
 
@@ -902,6 +922,125 @@
       x.debe = r2(x.debe + mv.debe); x.haber = r2(x.haber + mv.haber);
     }));
     return Object.values(m).map(x => ({ ...x, saldo: r2(x.debe - x.haber) })).filter(x => x.saldo);
+  }
+
+  // ---------------------------------------------------------------- Hoja de cálculo de costeo
+  const TIPO_OP = { '16': 'Saldo inicial', '02': 'Compra', '10': 'Salida a producción', '19': 'Entrada de producción', '01': 'Venta' };
+
+  /**
+   * Libro de cálculo con todo el costeo, listo para mostrarse como hoja de cálculo o exportarse a Excel / Google Sheets.
+   * Cada hoja: { name, title, cols: [{ l, t }], rows: [{ c: [...], k }] }.
+   * Tipos de columna: t texto, m soles, q cantidad, c costo unitario/tasa, p porcentaje. k: 'h' grupo, 't' total.
+   */
+  function costeoSheets(ctx) {
+    const db = ctx.db;
+    const ots = db.ordenes;
+    const prod = id => (byId(db.productos, id) || {}).nombre || '';
+    const R = id => ctx.cost.porOT[id];
+    const row = (c, k) => ({ c, k: k || '' });
+    const out = [];
+    const add = (name, title, cols, rows) => out.push({ name, title, cols, rows });
+    const div = (a, b) => (Math.abs(b) > EPS ? a / b : 0);
+
+    // 1. Resumen por O/T
+    const res = ots.map(o => {
+      const x = R(o.id);
+      return row([o.numero, prod(o.productoId), num(o.cantidad), o.estado, x.md, x.mod, x.cif, x.total, x.unit, div(x.md, x.total), div(x.mod, x.total), div(x.cif, x.total)]);
+    });
+    const tMD = sumBy(ots.map(o => R(o.id)), 'md'), tMOD = sumBy(ots.map(o => R(o.id)), 'mod'), tCIF = sumBy(ots.map(o => R(o.id)), 'cif');
+    const tTot = r2(tMD + tMOD + tCIF);
+    res.push(row(['TOTAL', '', '', '', tMD, tMOD, tCIF, tTot, '', div(tMD, tTot), div(tMOD, tTot), div(tCIF, tTot)], 't'));
+    add('Resumen OT', 'Resumen del costo por orden de trabajo', [
+      { l: 'O/T', t: 't' }, { l: 'Producto', t: 't' }, { l: 'Cantidad', t: 'q' }, { l: 'Estado', t: 't' }, { l: 'MD', t: 'm' }, { l: 'MOD', t: 'm' }, { l: 'CIF', t: 'm' },
+      { l: 'Costo total', t: 'm' }, { l: 'Costo unitario', t: 'c' }, { l: '% MD', t: 'p' }, { l: '% MOD', t: 'p' }, { l: '% CIF', t: 'p' }], res);
+
+    // 2. Materia prima directa
+    const mp = [];
+    ots.forEach(o => {
+      const x = R(o.id);
+      if (!x.mdDet.length) return;
+      mp.push(row([o.numero + ' · ' + prod(o.productoId), '', '', '', '', '', '', ''], 'h'));
+      x.mdDet.forEach(d => mp.push(row([o.numero, d.fecha, d.numero, d.material, d.cantidad, d.unidad, d.cu, d.total])));
+      mp.push(row(['Subtotal ' + o.numero, '', '', '', '', '', '', x.md], 't'));
+    });
+    mp.push(row(['TOTAL MATERIA PRIMA DIRECTA', '', '', '', '', '', '', tMD], 't'));
+    add('Materia prima', 'Materia prima directa por orden de trabajo (requisiciones valorizadas con el kardex)', [
+      { l: 'O/T', t: 't' }, { l: 'Fecha', t: 't' }, { l: 'Requisición', t: 't' }, { l: 'Material', t: 't' }, { l: 'Cantidad', t: 'q' }, { l: 'Unidad', t: 't' }, { l: 'Costo unitario', t: 'c' }, { l: 'Total', t: 'm' }], mp);
+
+    // 3. Mano de obra directa
+    const mo = [];
+    ots.forEach(o => {
+      const x = R(o.id);
+      if (!x.modDet.length) return;
+      mo.push(row([o.numero + ' · ' + prod(o.productoId), '', '', '', '', ''], 'h'));
+      x.modDet.forEach(d => mo.push(row([o.numero, d.trabajador, d.cargo, d.horas, d.tarifa, d.total])));
+      mo.push(row(['Subtotal ' + o.numero, '', '', x.horas, '', x.mod], 't'));
+    });
+    mo.push(row(['TOTAL MANO DE OBRA DIRECTA', '', '', ots.reduce((s, o) => s + R(o.id).horas, 0), '', tMOD], 't'));
+    add('Mano de obra', 'Mano de obra directa por orden de trabajo (hojas de tiempo)', [
+      { l: 'O/T', t: 't' }, { l: 'Trabajador', t: 't' }, { l: 'Cargo', t: 't' }, { l: 'Horas', t: 'q' }, { l: 'Tarifa S/ por hora', t: 'c' }, { l: 'Total', t: 'm' }], mo);
+
+    // 4. Distribución de CIF
+    const dc = ctx.cost.pools.map(p => row([p.concepto.codigo + ' ' + p.concepto.nombre, p.inductor ? p.inductor.nombre : '-', p.concepto.comportamiento || '', p.monto, p.baseTotal, p.tasa].concat(p.asignado)));
+    dc.push(row(['TOTAL CIF', '', '', sumBy(ctx.cost.pools, 'monto'), '', ''].concat(ots.map(o => R(o.id).cif)), 't'));
+    add('Distribución CIF', 'Distribución de los CIF con su inductor (tasa = CIF real ÷ base total)', [
+      { l: 'Concepto CIF', t: 't' }, { l: 'Inductor', t: 't' }, { l: 'Comportamiento', t: 't' }, { l: 'CIF real', t: 'm' }, { l: 'Base total', t: 'q' }, { l: 'Tasa', t: 'c' }]
+      .concat(ots.map(o => ({ l: o.numero, t: 'm' }))), dc);
+
+    // 5. Bases de inductores
+    const FUENTE = { UNIDADES: 'Unidades de la O/T', HORAS_MOD: 'Hojas de tiempo', COSTO_MD: 'Costo de MD', MANUAL: 'Manual' };
+    const bi = db.inductores.map(ind => {
+      const vals = ots.map(o => (ctx.cost.bases[ind.id] || {})[o.id] || 0);
+      return row([ind.codigo + ' ' + ind.nombre, ind.unidad, FUENTE[ind.fuente] || ind.fuente].concat(vals).concat([vals.reduce((a, b) => a + b, 0)]));
+    });
+    add('Inductores', 'Bases de los inductores por orden de trabajo', [{ l: 'Inductor', t: 't' }, { l: 'Unidad', t: 't' }, { l: 'Origen', t: 't' }]
+      .concat(ots.map(o => ({ l: o.numero, t: 'q' }))).concat([{ l: 'Total', t: 'q' }]), bi);
+
+    // 6. Kardex
+    const kx = [];
+    Object.values(ctx.kMat.items).concat(Object.values(ctx.kPT.items)).forEach(it => {
+      kx.push(row([it.clase + ' · ' + it.codigo + ' ' + it.nombre + ' (' + it.cuenta + ')', '', '', '', '', '', '', '', '', '', '', '', ''], 'h'));
+      it.rows.forEach(r => kx.push(row([r.fecha, r.tipoOp + ' ' + (TIPO_OP[r.tipoOp] || ''), r.doc, r.detalle, r.eCant, r.eCU, r.eTot, r.oCant, r.oCU, r.oTot, r.sCant, r.sCU, r.sTot])));
+      kx.push(row(['Saldo final', '', '', '', '', '', '', '', '', '', it.saldoCant, it.saldoCant ? it.saldoTotal / it.saldoCant : 0, it.saldoTotal], 't'));
+    });
+    add('Kardex', 'Kardex valorizado (' + (db.empresa.metodo === 'PEPS' ? 'PEPS' : 'promedio ponderado') + ')', [
+      { l: 'Fecha', t: 't' }, { l: 'Tipo de operación', t: 't' }, { l: 'Documento', t: 't' }, { l: 'Detalle', t: 't' },
+      { l: 'Entrada cant.', t: 'q' }, { l: 'Entrada C.U.', t: 'c' }, { l: 'Entrada total', t: 'm' }, { l: 'Salida cant.', t: 'q' }, { l: 'Salida C.U.', t: 'c' }, { l: 'Salida total', t: 'm' },
+      { l: 'Saldo cant.', t: 'q' }, { l: 'Saldo C.U.', t: 'c' }, { l: 'Saldo total', t: 'm' }], kx);
+
+    // 7. Costo laboral (planilla)
+    const DEST = { MOD: '921 MOD (a las O/T)', MOI: '931 CIF', ADM: '941 Administración', VEN: '951 Ventas' };
+    const pl = ctx.pl.map(w => row([w.nombre, w.cargo, w.clasificacion, w.bruto, w.essalud, w.costo, DEST[w.clasificacion] || '']));
+    pl.push(row(['TOTAL', '', '', sumBy(ctx.pl, 'bruto'), sumBy(ctx.pl, 'essalud'), sumBy(ctx.pl, 'costo'), ''], 't'));
+    add('Costo laboral', 'Costo laboral por trabajador y su destino', [
+      { l: 'Trabajador', t: 't' }, { l: 'Cargo', t: 't' }, { l: 'Clasificación', t: 't' }, { l: 'Remuneración', t: 'm' }, { l: 'EsSalud', t: 'm' }, { l: 'Costo laboral', t: 'm' }, { l: 'Destino', t: 't' }], pl);
+
+    // 8. Estado de costo de producción y ventas
+    const x = estadoCostos(ctx);
+    const ec = [
+      row(['Inventario inicial de materias primas', x.iiMP]), row(['(+) Compras de materias primas', x.comprasMP]), row(['(-) Inventario final de materias primas', -x.ifMP]),
+      row(['Materia prima consumida', x.consumoMP], 't'), row(['Materia prima directa (MD)', x.md], 't'), row(['Mano de obra directa (MOD)', x.mod], 't')]
+      .concat(x.cifDet.map(d => row(['   ' + d.concepto, d.monto])))
+      .concat([row(['Costos indirectos de fabricación (CIF)', x.cif], 't'), row(['COSTO DE PRODUCCIÓN DEL PERIODO', x.costoProd], 't'),
+        row(['(+) Inventario inicial de productos en proceso', x.iiPP]), row(['(-) Inventario final de productos en proceso', -x.ifPP]),
+        row(['COSTO DE PRODUCCIÓN TERMINADA', x.cpt], 't'), row(['(+) Inventario inicial de productos terminados', x.iiPT]),
+        row(['(-) Inventario final de productos terminados', -x.ifPT]), row(['COSTO DE VENTAS', x.costoVentas], 't')]);
+    add('Estado de costos', 'Estado de costo de producción y de ventas', [{ l: 'Concepto', t: 't' }, { l: 'Importe', t: 'm' }], ec);
+
+    // 9 y 10. Costos fijos y variables · punto de equilibrio
+    const v = cvu(ctx);
+    const fv = v.items.map(i => row([i.concepto, i.area, i.tipo, i.monto]));
+    fv.push(row(['Costos variables', '', 'VARIABLE', v.cv], 't'), row(['Costos fijos', '', 'FIJO', v.cf], 't'));
+    add('Fijos y variables', 'Clasificación de costos por comportamiento', [{ l: 'Concepto', t: 't' }, { l: 'Área', t: 't' }, { l: 'Comportamiento', t: 't' }, { l: 'Importe', t: 'm' }], fv);
+    const pe = v.productos.map(p => row([p.producto, p.unidadesVend, p.mix, p.precio, p.cvu, p.mcu, p.peUnid == null ? '' : p.peUnid, p.peSoles == null ? '' : p.peSoles]));
+    pe.push(row(['Margen de contribución unitario ponderado', '', '', '', '', v.mcuPond, '', ''], 't'));
+    pe.push(row(['Punto de equilibrio total', '', '', '', '', '', v.peUnidades == null ? '' : v.peUnidades, v.peSoles == null ? '' : v.peSoles], 't'));
+    pe.push(row(['Margen de seguridad', '', v.margenSeguridad == null ? '' : v.margenSeguridad, '', '', '', '', ''], 't'));
+    add('Punto de equilibrio', 'Margen de contribución y punto de equilibrio (mezcla de ventas del periodo)', [
+      { l: 'Producto', t: 't' }, { l: 'Unidades vendidas', t: 'q' }, { l: 'Mezcla', t: 'p' }, { l: 'Precio unitario', t: 'c' }, { l: 'Costo variable unit.', t: 'c' },
+      { l: 'Margen contrib. unit.', t: 'c' }, { l: 'P.E. unidades', t: 'q' }, { l: 'P.E. S/', t: 'm' }], pe);
+
+    return out;
   }
 
   // ---------------------------------------------------------------- Validaciones
@@ -982,6 +1121,22 @@
     return u;
   }
 
+  /**
+   * Base de datos para una empresa nueva. modo: 'vacia' (solo PCGE base), 'ejemplo' (datos de ejemplo)
+   * o 'copia' (tablas maestras de `base`, sin documentos). `seed` crea los datos de ejemplo.
+   */
+  function newCompanyDb(data, modo, base, seed) {
+    const db = modo === 'ejemplo' && seed ? seed() : emptyDb();
+    if (modo === 'copia' && base) {
+      ['cuentas', 'materiales', 'productos', 'inductores', 'conceptosCIF', 'activos', 'trabajadores'].forEach(k => (db[k] = JSON.parse(JSON.stringify(base[k] || []))));
+      db.empresa = Object.assign({}, base.empresa, { cajaInicial: 0 });
+    }
+    ['razon', 'ruc', 'direccion', 'actividad', 'periodo'].forEach(k => { if (data && data[k]) db.empresa[k] = String(data[k]).trim(); });
+    db.cierre = { realizado: false };
+    db.schema = SCHEMA;
+    return db;
+  }
+
   function emptyDb() {
     return {
       schema: SCHEMA,
@@ -1001,6 +1156,6 @@
     BASE_CHART, ELEMENTOS, DESTINOS, DESTINO_LABEL, CLASIF_TRAB, TIPOS_DOC, TES_TIPOS, ORIGENES,
     matAccount, ptAccount, otAccount, accType, chart, periodStart, periodEnd, runKardex, planillaCalc,
     compute, ledger, saldoPrefix, balanceComprobacion, estadoSituacion, resultadosFuncion, resultadosNaturaleza,
-    flujoEfectivo, estadoCostos, cambiosPatrimonio, ratios, cvu, saldosPorTercero, validar, blockingErrors, usos, emptyDb
+    flujoEfectivo, estadoCostos, cambiosPatrimonio, ratios, cvu, costeoSheets, TIPO_OP, saldosPorTercero, validar, blockingErrors, usos, emptyDb, newCompanyDb
   };
 });
